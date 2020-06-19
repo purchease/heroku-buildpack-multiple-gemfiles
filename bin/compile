@@ -40,15 +40,46 @@ fi
 # The heroku ruby buildpack will have already installed the gems for the default Gemfile, so now
 # install the missing gems from Gemfile_next.
 echo "-----> Installing Gemfile_next gems"
+echo "       Running: BUNDLE_GEMFILE=Gemfile_next bundle install --without $bundle_without --path vendor/bundle --binstubs vendor/bundle/bin -j4 --deployment"
 cd $BUILD_DIR
 set -o pipefail # Enable pipefail so failure exit code from bundle install will not be lost by pipe to indent.
-echo "       Running: BUNDLE_GEMFILE=Gemfile_next bundle install --without $bundle_without --path vendor/bundle --binstubs vendor/bundle/bin -j4 --deployment"
 BUNDLE_GEMFILE=Gemfile_next bundle install --without $bundle_without --path vendor/bundle --binstubs vendor/bundle/bin -j4 --deployment | indent
 bundle_install_status=$?
 set +o pipefail # Disable pipefail, only needed for above command as it is pipes to indent.
 
 if [ $bundle_install_status -ne 0 ]; then
   error "bundle install error: This can happen when Gemfile_next.lock falls out of sync with Gemfile_next. Check the committed Gemfile_next.lock is up-to-date."
+fi
+
+# https://devcenter.heroku.com/articles/buildpack-api#bin-compile
+export_env_dir() {
+  env_dir=$1
+  acceptlist_regex=${2:-''}
+  denylist_regex=${3:-'^(PATH|GIT_DIR|CPATH|CPPATH|LD_PRELOAD|LIBRARY_PATH)$'}
+  if [ -d "$env_dir" ]; then
+    for e in $(ls $env_dir); do
+      echo "$e" | grep -E "$acceptlist_regex" | grep -qvE "$denylist_regex" &&
+      export "$e=$(cat $env_dir/$e)"
+      :
+    done
+  fi
+}
+
+echo "-----> Preparing env variables for asset compilation"
+export_env_dir $ENV_DIR
+
+echo "-----> Preparing app for Rails asset pipeline (using Gemfile_next gems)"
+echo "       Running: BUNDLE_GEMFILE=Gemfile_next rake assets:precompile"
+cd $BUILD_DIR
+set -o pipefail # Enable pipefail so failure exit code from bundle install will not be lost by pipe to indent.
+BUNDLE_GEMFILE=Gemfile_next rake assets:precompile | indent
+assets_precompile_status=$?
+set +o pipefail # Disable pipefail, only needed for above command as it is pipes to indent.
+
+if [ $assets_precompile_status -ne 0 ]; then
+  error "Asset precompilation failed."
+else
+  echo "       Asset precompilation completed."
 fi
 
 echo "-----> Writing .profile.d/multiple-gemfiles.sh to run on dyno startup"
