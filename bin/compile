@@ -37,6 +37,12 @@ then
   bundle_without="$(cat $ENV_DIR/BUNDLE_WITHOUT)"
 fi
 
+if [ -f "$ENV_DIR/BUNDLE_GEM__FURY__IO" ]
+then
+  echo "-----> Exporting BUNDLE_GEM__FURY__IO"
+  export BUNDLE_GEM__FURY__IO=$(cat $ENV_DIR/BUNDLE_GEM__FURY__IO)
+fi
+
 # The heroku ruby buildpack will have already installed the gems for the default Gemfile, so now
 # install the missing gems from Gemfile_next.
 echo "-----> Installing Gemfile_next gems"
